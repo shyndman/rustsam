@@ -1,26 +1,29 @@
+extern crate alloc;
+use alloc::vec::Vec;
+
+use defmt::write;
+
 #[derive(Debug)]
 pub enum ParseError {
     // TODO: Cases
 }
 
-impl std::error::Error for ParseError {}
-
-impl std::fmt::Display for ParseError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "Parse error")
+impl defmt::Format for ParseError {
+    fn format(&self, fmt: defmt::Formatter) {
+        write!(fmt, "Parse error")
     }
 }
 
 #[derive(Debug)]
 pub struct ParseResult {
-    pub phonemes: Vec<Phoneme>
+    pub phonemes: Vec<Phoneme>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Phoneme {
     pub length: u8,
     pub index: usize,
-    pub stress: u8
+    pub stress: u8,
 }
 
 impl Phoneme {
@@ -32,14 +35,12 @@ impl Phoneme {
 impl ParseResult {
     fn new() -> Self {
         Self {
-            phonemes: Vec::new()
+            phonemes: Vec::new(),
         }
     }
 }
 
-const STRESS_TABLE: &[char] = &[
-    '*', '1', '2', '3', '4', '5', '6', '7', '8'
-];
+const STRESS_TABLE: &[char] = &['*', '1', '2', '3', '4', '5', '6', '7', '8'];
 
 const PHONEME_NAME_TABLE: &[(char, char)] = &[
     (' ', '*'), // 00
@@ -122,7 +123,7 @@ const PHONEME_NAME_TABLE: &[(char, char)] = &[
     ('*', '*'), // 77
     ('U', 'L'), // 78
     ('U', 'M'), // 79
-    ('U', 'N')  // 80
+    ('U', 'N'), // 80
 ];
 
 const PHONEME_LENGTH_TABLE: &[(u8, u8)] = &[
@@ -205,41 +206,41 @@ const PHONEME_LENGTH_TABLE: &[(u8, u8)] = &[
     (0x01, 0x01), // '**' 76
     (0x04, 0x04), // '**' 77
     (0xC7, 0x05), // 'UL' 78
-    (0xFF, 0x05)  // 'UM' 79
-    // FIXME: Phoneme 80 (UN) is missing
+    (0xFF, 0x05), // 'UM' 79
+                  // FIXME: Phoneme 80 (UN) is missing
 ];
 
 mod flag {
     // Unused constants
-    pub const _OX8000: u16          = 0x8000; // Unknown: ' *', '.*', '?*', ',*', '-*'
-    pub const _OX4000: u16          = 0x4000; // Unknown: '.*', '?*', ',*', '-*', 'Q*'
+    pub const _OX8000: u16 = 0x8000; // Unknown: ' *', '.*', '?*', ',*', '-*'
+    pub const _OX4000: u16 = 0x4000; // Unknown: '.*', '?*', ',*', '-*', 'Q*'
 
     // Consonant articulations
-    pub const FRICATIVE: u16        = 0x2000;
-    pub const LIQUID: u16           = 0x1000;
-    pub const NASAL: u16            = 0x0800;
-    pub const ALVEOLAR: u16         = 0x0400;
+    pub const FRICATIVE: u16 = 0x2000;
+    pub const LIQUID: u16 = 0x1000;
+    pub const NASAL: u16 = 0x0800;
+    pub const ALVEOLAR: u16 = 0x0400;
 
     // 0x0200 is unused
-    pub const _OX0200: u16          = 0x0200;
+    pub const _OX0200: u16 = 0x0200;
 
-    pub const PUNCTUATION: u16      = 0x0100;
-    pub const VOWEL: u16            = 0x0080;
-    pub const CONSONANT: u16        = 0x0040; // Note that UM and UN are marked as both vowels and consonants
+    pub const PUNCTUATION: u16 = 0x0100;
+    pub const VOWEL: u16 = 0x0080;
+    pub const CONSONANT: u16 = 0x0040; // Note that UM and UN are marked as both vowels and consonants
 
-    pub const DIPHTHONG_YX: u16     = 0x0020; // Diphthong ending with YX, front vowels?
-    pub const DIPHTHONG: u16        = 0x0010;
+    pub const DIPHTHONG_YX: u16 = 0x0020; // Diphthong ending with YX, front vowels?
+    pub const DIPHTHONG: u16 = 0x0010;
 
     // Unknown:
     // 'M*', 'N*', 'NX', 'DX', 'Q*', 'CH', 'J*', 'B*', '**', '**', 'D*',
     // '**', '**', 'G*', '**', '**', 'GX', '**', '**', 'P*', '**', '**',
     // 'T*', '**', '**', 'K*', '**', '**', 'KX', '**', '**'
-    pub const OX0008: u16           = 0x0008;
+    pub const OX0008: u16 = 0x0008;
 
-    pub const VOICED: u16           = 0x0004; // Applied to vowels and consonants
+    pub const VOICED: u16 = 0x0004; // Applied to vowels and consonants
 
     // Plosives
-    pub const PLOSIVE: u16          = 0x0002; // Both voiced and unvoiced
+    pub const PLOSIVE: u16 = 0x0002; // Both voiced and unvoiced
     pub const UNVOICED_PLOSIVE: u16 = 0x0001;
 }
 
@@ -324,22 +325,22 @@ const PHONEME_FLAGS: &[u16] = &[
     0x004b, // '**' 77
     0x0080, // 'UL' 78
     0x00c1, // 'UM' 79
-    0x00c1  // 'UN' 80
+    0x00c1, // 'UN' 80
 ];
 
 /// Match both characters, but not with wildcards.
 fn full_match(sign1: char, sign2: char) -> Option<usize> {
     // TODO: Investigate if sign2 is ever an asterisk
-    PHONEME_NAME_TABLE.iter().position(|(first, second)|
-        *second != '*' && *first == sign1 && *second == sign2
-    )
+    PHONEME_NAME_TABLE
+        .iter()
+        .position(|(first, second)| *second != '*' && *first == sign1 && *second == sign2)
 }
 
 /// Match character plus a wildcard.
 fn wildcard_match(sign1: char) -> Option<usize> {
-    PHONEME_NAME_TABLE.iter().position(|(first, second)|
-        *first == sign1 && *second == '*'
-    )
+    PHONEME_NAME_TABLE
+        .iter()
+        .position(|(first, second)| *first == sign1 && *second == '*')
 }
 
 // TODO: Emit Result instead of panicking
@@ -359,7 +360,7 @@ fn parser1(text: &str) -> ParseResult {
                 result.phonemes.push(Phoneme {
                     index: phoneme_index,
                     length: 0,
-                    stress: 0
+                    stress: 0,
                 });
 
                 continue;
@@ -373,7 +374,7 @@ fn parser1(text: &str) -> ParseResult {
             result.phonemes.push(Phoneme {
                 index: phoneme_index,
                 length: 0,
-                stress: 0
+                stress: 0,
             });
 
             continue;
@@ -382,18 +383,25 @@ fn parser1(text: &str) -> ParseResult {
         // Note: the first index ("*") is not matched in the original implementation. The original
         // implementation searches backwards, but this does not make sense on a modern CPU.
         // TODO: Can be replaced with ascii math instead of iteration?
-        if let Some(index) = STRESS_TABLE[1..].iter().position(|candidate| *candidate == sign1) {
+        if let Some(index) = STRESS_TABLE[1..]
+            .iter()
+            .position(|candidate| *candidate == sign1)
+        {
             // add_stress
             // Compensate for the skipped "*" in the iterator index
             let index = index + 1;
 
             // FIXME: This can never happen here?
             //if index & 128 != 0 {
-                //throw new Error('Got the flag 0x80, see CopyStress() and SetPhonemeLength() comments!');
+            //throw new Error('Got the flag 0x80, see CopyStress() and SetPhonemeLength() comments!');
             //}
 
             // Set stress for prior phoneme
-            result.phonemes.last_mut().expect("Tried adding stress without adding a phoneme first").stress = index as u8;
+            result
+                .phonemes
+                .last_mut()
+                .expect("Tried adding stress without adding a phoneme first")
+                .stress = index as u8;
         } else {
             panic!("Could not parse character {:?}", sign1);
         }
@@ -402,39 +410,39 @@ fn parser1(text: &str) -> ParseResult {
     result
 }
 
-pub const PHONEME_PAUSE: usize         = 0;
-pub const PHONEME_PERIOD: usize        = 1;
+pub const PHONEME_PAUSE: usize = 0;
+pub const PHONEME_PERIOD: usize = 1;
 pub const PHONEME_QUESTION_MARK: usize = 2;
-pub const PHONEME_AX: usize            = 13;
-pub const PHONEME_UX: usize            = 16;
-pub const PHONEME_RX: usize            = 18;
-pub const PHONEME_LX: usize            = 19;
-pub const PHONEME_WX: usize            = 20;
-pub const PHONEME_YX: usize            = 21;
-pub const PHONEME_R_STAR: usize        = 23;
-pub const PHONEME_L_STAR: usize        = 24;
-pub const PHONEME_M_STAR: usize        = 27;
-pub const PHONEME_N_STAR: usize        = 28;
-pub const PHONEME_DX: usize            = 30;
-pub const PHONEME_Q_STAR: usize        = 31;
-pub const PHONEME_S_STAR: usize        = 32;
-pub const PHONEME_SLASH_H: usize       = 36;
-pub const PHONEME_SLASH_X: usize       = 37;
-pub const PHONEME_Z_STAR: usize        = 38;
-pub const PHONEME_CH: usize            = 42;
-pub const PHONEME_STAR_STAR_43: usize  = 43;
-pub const PHONEME_J_STAR: usize        = 44;
-pub const PHONEME_STAR_STAR_45: usize  = 45;
-pub const PHONEME_UW: usize            = 53;
-pub const PHONEME_D_STAR: usize        = 57;
-pub const PHONEME_G_STAR: usize        = 60;
-pub const PHONEME_GX: usize            = 63;
-pub const PHONEME_T_STAR: usize        = 69;
-pub const PHONEME_K_STAR: usize        = 72;
-pub const PHONEME_KX: usize            = 75;
-pub const PHONEME_UL: usize            = 78;
-pub const PHONEME_UM: usize            = 79;
-pub const PHONEME_UN: usize            = 80;
+pub const PHONEME_AX: usize = 13;
+pub const PHONEME_UX: usize = 16;
+pub const PHONEME_RX: usize = 18;
+pub const PHONEME_LX: usize = 19;
+pub const PHONEME_WX: usize = 20;
+pub const PHONEME_YX: usize = 21;
+pub const PHONEME_R_STAR: usize = 23;
+pub const PHONEME_L_STAR: usize = 24;
+pub const PHONEME_M_STAR: usize = 27;
+pub const PHONEME_N_STAR: usize = 28;
+pub const PHONEME_DX: usize = 30;
+pub const PHONEME_Q_STAR: usize = 31;
+pub const PHONEME_S_STAR: usize = 32;
+pub const PHONEME_SLASH_H: usize = 36;
+pub const PHONEME_SLASH_X: usize = 37;
+pub const PHONEME_Z_STAR: usize = 38;
+pub const PHONEME_CH: usize = 42;
+pub const PHONEME_STAR_STAR_43: usize = 43;
+pub const PHONEME_J_STAR: usize = 44;
+pub const PHONEME_STAR_STAR_45: usize = 45;
+pub const PHONEME_UW: usize = 53;
+pub const PHONEME_D_STAR: usize = 57;
+pub const PHONEME_G_STAR: usize = 60;
+pub const PHONEME_GX: usize = 63;
+pub const PHONEME_T_STAR: usize = 69;
+pub const PHONEME_K_STAR: usize = 72;
+pub const PHONEME_KX: usize = 75;
+pub const PHONEME_UL: usize = 78;
+pub const PHONEME_UM: usize = 79;
+pub const PHONEME_UN: usize = 80;
 
 fn handle_uw_ch_j(phonemes: &mut Vec<Phoneme>, position: usize) {
     let phoneme = &phonemes[position];
@@ -444,27 +452,33 @@ fn handle_uw_ch_j(phonemes: &mut Vec<Phoneme>, position: usize) {
         // Check for UW with alveolar flag set on previous phoneme
         PHONEME_UW if phonemes.get(position - 1).unwrap().has_flag(flag::ALVEOLAR) => {
             phonemes[position].index = PHONEME_UX;
-        },
+        }
 
         // 'CH' Example: CHEW
         PHONEME_CH => {
-            phonemes.insert(position + 1, Phoneme {
-                length: 0,
-                index: PHONEME_STAR_STAR_43,
-                stress: phoneme.stress
-            });
-        },
+            phonemes.insert(
+                position + 1,
+                Phoneme {
+                    length: 0,
+                    index: PHONEME_STAR_STAR_43,
+                    stress: phoneme.stress,
+                },
+            );
+        }
 
         // 'J*' Example: JAY
         PHONEME_J_STAR => {
-            phonemes.insert(position + 1, Phoneme {
-                length: 0,
-                index: PHONEME_STAR_STAR_45,
-                stress: phoneme.stress
-            });
-        },
+            phonemes.insert(
+                position + 1,
+                Phoneme {
+                    length: 0,
+                    index: PHONEME_STAR_STAR_45,
+                    stress: phoneme.stress,
+                },
+            );
+        }
 
-        _ => ()
+        _ => (),
     }
 }
 
@@ -491,15 +505,18 @@ fn parser2(result: &mut ParseResult) -> Result<(), ParseError> {
             // If ends with IY, use YX, else use WX
             // Insert at WX or YX following, copying the stress
             // 'WX' = 20 'YX' = 21
-            result.phonemes.insert(position + 1, Phoneme {
-                length: 0,
-                index: if result.phonemes[position].has_flag(flag::DIPHTHONG_YX) {
-                    PHONEME_YX
-                } else {
-                    PHONEME_WX
+            result.phonemes.insert(
+                position + 1,
+                Phoneme {
+                    length: 0,
+                    index: if result.phonemes[position].has_flag(flag::DIPHTHONG_YX) {
+                        PHONEME_YX
+                    } else {
+                        PHONEME_WX
+                    },
+                    stress: result.phonemes[position].stress,
                 },
-                stress: result.phonemes[position].stress
-            });
+            );
 
             handle_uw_ch_j(&mut result.phonemes, position);
             continue;
@@ -509,11 +526,14 @@ fn parser2(result: &mut ParseResult) -> Result<(), ParseError> {
             // 'UL' => 'AX' 'L*'
             // Example: MEDDLE
             result.phonemes[position].index = PHONEME_AX;
-            result.phonemes.insert(position + 1, Phoneme {
-                length: 0,
-                index: PHONEME_L_STAR,
-                stress: result.phonemes[position].stress
-            });
+            result.phonemes.insert(
+                position + 1,
+                Phoneme {
+                    length: 0,
+                    index: PHONEME_L_STAR,
+                    stress: result.phonemes[position].stress,
+                },
+            );
 
             continue;
         }
@@ -522,11 +542,14 @@ fn parser2(result: &mut ParseResult) -> Result<(), ParseError> {
             // 'UM' => 'AX' 'M*'
             // Example: ASTRONOMY
             result.phonemes[position].index = PHONEME_AX;
-            result.phonemes.insert(position + 1, Phoneme {
-                length: 0,
-                index: PHONEME_M_STAR,
-                stress: result.phonemes[position].stress
-            });
+            result.phonemes.insert(
+                position + 1,
+                Phoneme {
+                    length: 0,
+                    index: PHONEME_M_STAR,
+                    stress: result.phonemes[position].stress,
+                },
+            );
 
             continue;
         }
@@ -534,29 +557,42 @@ fn parser2(result: &mut ParseResult) -> Result<(), ParseError> {
         if result.phonemes[position].index == PHONEME_UN {
             // 'UN' => 'AX' 'N*'
             result.phonemes[position].index = PHONEME_AX;
-            result.phonemes.insert(position + 1, Phoneme {
-                length: 0,
-                index: PHONEME_N_STAR,
-                stress: result.phonemes[position].stress
-            });
+            result.phonemes.insert(
+                position + 1,
+                Phoneme {
+                    length: 0,
+                    index: PHONEME_N_STAR,
+                    stress: result.phonemes[position].stress,
+                },
+            );
 
             continue;
         }
 
-        if result.phonemes[position].has_flag(flag::VOWEL) && result.phonemes[position].stress != 0 {
+        if result.phonemes[position].has_flag(flag::VOWEL) &&
+            result.phonemes[position].stress != 0
+        {
             // Example: FUNCTION
             // RULE:
             //       <STRESSED VOWEL> <SILENCE> <STRESSED VOWEL> -> <STRESSED VOWEL> <SILENCE> Q <VOWEL>
             // EXAMPLE: AWAY EIGHT
-            if result.phonemes.get(position + 1).map_or(false, |phoneme| phoneme.index == PHONEME_PAUSE) { // If following phoneme is a pause, get next
+            if result
+                .phonemes
+                .get(position + 1)
+                .map_or(false, |phoneme| phoneme.index == PHONEME_PAUSE)
+            {
+                // If following phoneme is a pause, get next
                 if let Some(phoneme) = result.phonemes.get(position + 2) {
                     if phoneme.has_flag(flag::VOWEL) && phoneme.stress != 0 {
                         // Insert glottal stop between two stressed vowels with space between them
-                        result.phonemes.insert(position + 2, Phoneme {
-                            length: 0,
-                            index: PHONEME_Q_STAR,
-                            stress: 0
-                        });
+                        result.phonemes.insert(
+                            position + 2,
+                            Phoneme {
+                                length: 0,
+                                index: PHONEME_Q_STAR,
+                                stress: 0,
+                            },
+                        );
                     }
                 }
             }
@@ -580,7 +616,7 @@ fn parser2(result: &mut ParseResult) -> Result<(), ParseError> {
                     // T* R* -> CH R*
                     PHONEME_T_STAR => {
                         result.phonemes[position - 1].index = PHONEME_CH;
-                    },
+                    }
 
                     // Example: DRY
                     // D* R* -> J* R*
@@ -590,8 +626,10 @@ fn parser2(result: &mut ParseResult) -> Result<(), ParseError> {
 
                     // Example: ART
                     // <VOWEL> R* -> <VOWEL> RX
-                    _ => if prior_phoneme.has_flag(flag::VOWEL) {
-                        result.phonemes[position].index = PHONEME_RX;
+                    _ => {
+                        if prior_phoneme.has_flag(flag::VOWEL) {
+                            result.phonemes[position].index = PHONEME_RX;
+                        }
                     }
                 }
             }
@@ -600,7 +638,9 @@ fn parser2(result: &mut ParseResult) -> Result<(), ParseError> {
         }
 
         // 'L*'
-        if result.phonemes[position].index == PHONEME_L_STAR && prior_phoneme.map_or(false, |phoneme| phoneme.has_flag(flag::VOWEL)) {
+        if result.phonemes[position].index == PHONEME_L_STAR &&
+            prior_phoneme.map_or(false, |phoneme| phoneme.has_flag(flag::VOWEL))
+        {
             // Example: ALL
             // <VOWEL> L* -> <VOWEL> LX
             result.phonemes[position].index = PHONEME_LX;
@@ -608,7 +648,9 @@ fn parser2(result: &mut ParseResult) -> Result<(), ParseError> {
         }
 
         // 'G*' 'S*'
-        if result.phonemes[position].index == PHONEME_S_STAR && prior_phoneme.map_or(false, |phoneme| phoneme.index == PHONEME_G_STAR) {
+        if result.phonemes[position].index == PHONEME_S_STAR &&
+            prior_phoneme.map_or(false, |phoneme| phoneme.index == PHONEME_G_STAR)
+        {
             // G S -> G Z
             // Can't get to fire -
             //       1. The G -> GX rule intervenes
@@ -639,7 +681,11 @@ fn parser2(result: &mut ParseResult) -> Result<(), ParseError> {
             // Example: COW
             // If at end, replace current phoneme with KX
             // Note: also applies when next phoneme is not DIPHTHONG_YX
-            if result.phonemes.get(position + 1).map_or(true, |phoneme| !phoneme.has_flag(flag::DIPHTHONG_YX)) {
+            if result
+                .phonemes
+                .get(position + 1)
+                .map_or(true, |phoneme| !phoneme.has_flag(flag::DIPHTHONG_YX))
+            {
                 // VOWELS AND DIPHTHONGS ENDING WITH IY SOUND flag set?
                 result.phonemes[position].index = PHONEME_KX;
 
@@ -651,7 +697,12 @@ fn parser2(result: &mut ParseResult) -> Result<(), ParseError> {
         }
 
         // Replace with softer version?
-        if result.phonemes[position].has_flag(flag::UNVOICED_PLOSIVE) && result.phonemes.get(position - 1).map_or(false, |phoneme| phoneme.index == PHONEME_S_STAR) {
+        if result.phonemes[position].has_flag(flag::UNVOICED_PLOSIVE) &&
+            result
+                .phonemes
+                .get(position - 1)
+                .map_or(false, |phoneme| phoneme.index == PHONEME_S_STAR)
+        {
             // 'S*'
             // RULE:
             //   'S*' 'P*' -> 'S*' 'B*'
@@ -667,7 +718,9 @@ fn parser2(result: &mut ParseResult) -> Result<(), ParseError> {
         }
 
         // 'T*', 'D*'
-        if result.phonemes[position].index == PHONEME_T_STAR || result.phonemes[position].index == PHONEME_D_STAR {
+        if result.phonemes[position].index == PHONEME_T_STAR ||
+            result.phonemes[position].index == PHONEME_D_STAR
+        {
             // RULE: Soften T following vowel
             // NOTE: This rule fails for cases such as "ODD"
             //       <UNSTRESSED VOWEL> T <PAUSE> -> <UNSTRESSED VOWEL> DX <PAUSE>
@@ -678,12 +731,15 @@ fn parser2(result: &mut ParseResult) -> Result<(), ParseError> {
                     let mut phoneme = result.phonemes.get(position + 1);
                     let next_phoneme = phoneme;
 
-                    if next_phoneme.is_some() && next_phoneme.unwrap().index == PHONEME_PAUSE {
+                    if next_phoneme.is_some() && next_phoneme.unwrap().index == PHONEME_PAUSE
+                    {
                         phoneme = result.phonemes.get(position + 2);
                     }
 
                     if let Some(phoneme) = phoneme {
-                        if phoneme.has_flag(flag::VOWEL) && next_phoneme.map_or(false, |phoneme| phoneme.stress == 0) {
+                        if phoneme.has_flag(flag::VOWEL) &&
+                            next_phoneme.map_or(false, |phoneme| phoneme.stress == 0)
+                        {
                             // Soften T or D following vowel or ER and preceding a pause -> DX
                             result.phonemes[position].index = PHONEME_DX;
                         }
@@ -792,10 +848,16 @@ fn adjust_lengths(phonemes: &mut Vec<Phoneme>) {
             // not a consonant
             if !phonemes[position].has_flag(flag::CONSONANT) {
                 // 'RX' or 'LX'?
-                if phonemes[position].index == PHONEME_RX || phonemes[position].index == PHONEME_LX {
+                if phonemes[position].index == PHONEME_RX ||
+                    phonemes[position].index == PHONEME_LX
+                {
                     position += 1;
 
-                    if phonemes[position].has_flag(flag::CONSONANT) {
+                    if phonemes
+                        .get(position)
+                        .map(|phoneme| phoneme.has_flag(flag::CONSONANT))
+                        .unwrap_or(false)
+                    {
                         // followed by consonant?
 
                         // decrease length of vowel by 1 frame
@@ -808,10 +870,10 @@ fn adjust_lengths(phonemes: &mut Vec<Phoneme>) {
 
             // Got here if not <VOWEL>
             // FIXME: the case when phoneme === END is taken over by !phonemeHasFlag(phoneme, FLAG_CONSONANT)
-            let flags = vowel_phoneme_position.map_or(
-                flag::CONSONANT | flag::UNVOICED_PLOSIVE,
-                |position| PHONEME_FLAGS[phonemes[position].index]
-            );
+            let flags = vowel_phoneme_position
+                .map_or(flag::CONSONANT | flag::UNVOICED_PLOSIVE, |position| {
+                    PHONEME_FLAGS[phonemes[position].index]
+                });
 
             // Unvoiced
             if flags & flag::VOICED == 0 {
@@ -879,7 +941,8 @@ fn adjust_lengths(phonemes: &mut Vec<Phoneme>) {
                 if phoneme.has_flag(flag::PLOSIVE) {
                     // RULE: <STOP CONSONANT> {optional silence} <STOP CONSONANT>
                     phoneme.length = (phoneme.length >> 1) + 1;
-                    phonemes[loop_position].length = (phonemes[loop_position].length >> 1) + 1;
+                    phonemes[loop_position].length =
+                        (phonemes[loop_position].length >> 1) + 1;
                 }
             }
 
@@ -890,7 +953,10 @@ fn adjust_lengths(phonemes: &mut Vec<Phoneme>) {
         // /H, /X, Z*, ZH, V*, DH, CH, J*
 
         // liquid consonant following a plosive
-        if loop_position > 0 && phonemes[loop_position].has_flag(flag::LIQUID) && phonemes[loop_position - 1].has_flag(flag::PLOSIVE) {
+        if loop_position > 0 &&
+            phonemes[loop_position].has_flag(flag::LIQUID) &&
+            phonemes[loop_position - 1].has_flag(flag::PLOSIVE)
+        {
             // R*, L*, W*, Y*
             // RULE: <STOP CONSONANT> <LIQUID>
             //       Decrease <LIQUID> by 2
@@ -914,30 +980,42 @@ fn prolong_plosives(phonemes: &mut Vec<Phoneme>) {
         // If plosive, move to next non-empty phoneme and validate the flags.
         if phonemes[position].has_flag(flag::UNVOICED_PLOSIVE) {
             let mut next_non_empty = position + 1;
-            while phonemes.get(next_non_empty).map_or(false, |phoneme| phoneme.index == PHONEME_PAUSE) {
+            while phonemes
+                .get(next_non_empty)
+                .map_or(false, |phoneme| phoneme.index == PHONEME_PAUSE)
+            {
                 next_non_empty += 1;
             }
 
             // If not END and either flag 0x0008 or '/H' or '/X'
             if let Some(phoneme) = phonemes.get(next_non_empty) {
-                if phoneme.has_flag(flag::OX0008) || phoneme.index == PHONEME_SLASH_H || phoneme.index == PHONEME_SLASH_X {
+                if phoneme.has_flag(flag::OX0008) ||
+                    phoneme.index == PHONEME_SLASH_H ||
+                    phoneme.index == PHONEME_SLASH_X
+                {
                     position += 1;
                     continue;
                 }
             }
         }
 
-        phonemes.insert(position + 1, Phoneme {
-            index: phonemes[position].index + 1,
-            stress: phonemes[position].stress,
-            length: PHONEME_LENGTH_TABLE[phonemes[position].index + 1].0
-        });
+        phonemes.insert(
+            position + 1,
+            Phoneme {
+                index: phonemes[position].index + 1,
+                stress: phonemes[position].stress,
+                length: PHONEME_LENGTH_TABLE[phonemes[position].index + 1].0,
+            },
+        );
 
-        phonemes.insert(position + 2, Phoneme {
-            index: phonemes[position].index + 2,
-            stress: phonemes[position].stress,
-            length: PHONEME_LENGTH_TABLE[phonemes[position].index + 2].0
-        });
+        phonemes.insert(
+            position + 2,
+            Phoneme {
+                index: phonemes[position].index + 2,
+                stress: phonemes[position].stress,
+                length: PHONEME_LENGTH_TABLE[phonemes[position].index + 2].0,
+            },
+        );
 
         position += 3;
     }
@@ -965,7 +1043,9 @@ pub fn parse_phonemes(text: &str) -> Result<Vec<Phoneme>, ParseError> {
     prolong_plosives(&mut result.phonemes);
 
     // Filter pauses
-    result.phonemes.retain(|phoneme| phoneme.index != PHONEME_PAUSE);
+    result
+        .phonemes
+        .retain(|phoneme| phoneme.index != PHONEME_PAUSE);
 
     Ok(result.phonemes)
 }
