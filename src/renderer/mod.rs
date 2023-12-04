@@ -1,7 +1,9 @@
 extern crate alloc;
-
 use alloc::{vec, vec::Vec};
 use core::cmp::Ordering;
+
+#[allow(unused_imports)]
+use micromath::F32Ext;
 
 use crate::parser::Phoneme;
 
