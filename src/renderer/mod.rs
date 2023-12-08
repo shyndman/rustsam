@@ -841,6 +841,7 @@ const AMPLITUDE_RESCALE_TABLE: &[u8] = &[
     0x0F,
 ];
 
+#[derive(Debug)]
 struct PreparedFrames {
     // TODO: How does this relate to frames.len()?
     frame_count: usize,
