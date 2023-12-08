@@ -1,9 +1,9 @@
 extern crate alloc;
-use alloc::{vec, vec::Vec};
+use alloc::vec::Vec;
 use core::cmp::Ordering;
 
-#[allow(unused_imports)]
-use micromath::F32Ext;
+use futures::Future;
+use micromath as _;
 
 use crate::parser::Phoneme;
 
@@ -890,43 +890,44 @@ const TIMETABLE: &[[u8; 5]] = &[
     [199, 0, 0, 54, 54],       // voiced sample 1
 ];
 
-struct OutputBuffer {
-    buffer: Vec<u8>,
+const WRITE_SAMPLE_LENGTH: usize = 5;
+
+struct OutputWriter<R: Future<Output = ()>> {
+    output_fn: fn(u8) -> R,
+    last_write: [u8; WRITE_SAMPLE_LENGTH],
     position: usize,
     old_timetable_index: usize,
 }
 
-impl OutputBuffer {
-    fn new(size: usize) -> Self {
+impl<R: Future<Output = ()>> OutputWriter<R> {
+    fn new(output_fn: fn(u8) -> R) -> Self {
         Self {
-            buffer: vec![0; size],
+            output_fn,
+            last_write: [0; WRITE_SAMPLE_LENGTH],
             position: 0,
             old_timetable_index: 0,
         }
     }
 
-    fn ary(&mut self, index: usize, array: [u8; 5]) {
+    async fn write_sample_array(&mut self, index: usize, array: [u8; WRITE_SAMPLE_LENGTH]) {
         // TODO: index seems to be 0..=2, needs to be verified more on longer sentences
         self.position += TIMETABLE[self.old_timetable_index][index] as usize;
 
         self.old_timetable_index = index;
 
         // Write a little bit in advance
-        for (index, sample) in array.into_iter().enumerate() {
-            self.buffer[self.position / 50 + index] = sample;
+        for sample in array {
+            (self.output_fn)(sample).await;
         }
+
+        self.last_write = array;
     }
 
-    fn get(&self) -> &[u8] {
-        &self.buffer[..(self.position / 50)]
-    }
-
-    fn write(&mut self, index: usize, a: u8) {
+    async fn write_sample(&mut self, index: usize, sample: u8) {
         // Scale by 16 and write 5 times
         // Note: renderer passes in values that are > 16, these are overflowing
-        let scaled = (a & 15) * 16;
-
-        self.ary(index, [scaled, scaled, scaled, scaled, scaled]);
+        self.write_sample_array(index, [(sample & 15) * 16; WRITE_SAMPLE_LENGTH])
+            .await;
     }
 }
 
@@ -1057,8 +1058,8 @@ const SAMPLE_TABLE: &[u8] = &[
 
 const SAMPLED_CONSONANT_VALUES_ZERO: &[u8] = &[0x18, 0x1A, 0x17, 0x17, 0x17];
 
-fn render_sample_inner(
-    output: &mut OutputBuffer,
+async fn render_sample_inner<F: Future<Output = ()>>(
+    output: &mut OutputWriter<F>,
     sample_page: u16,
     off: u8,
     index1: u8,
@@ -1071,9 +1072,9 @@ fn render_sample_inner(
 
     loop {
         if sample & 128 != 0 {
-            output.write(index1 as usize, value1);
+            output.write_sample(index1 as usize, value1).await;
         } else {
-            output.write(index0 as usize, value0);
+            output.write_sample(index0 as usize, value0).await;
         }
 
         sample <<= 1;
@@ -1085,8 +1086,8 @@ fn render_sample_inner(
     }
 }
 
-fn render_sample(
-    output: &mut OutputBuffer,
+async fn render_sample<F: Future<Output = ()>>(
+    output: &mut OutputWriter<F>,
     last_sample_offset: usize,
     consonant_flag: u8,
     pitch: u8,
@@ -1112,7 +1113,7 @@ fn render_sample(
         off = (last_sample_offset & 0xFF) as u8; // unsigned char
 
         loop {
-            render_sample_inner(output, sample_page, off, 3, 26, 4, 6);
+            render_sample_inner(output, sample_page, off, 3, 26, 4, 6).await;
             off = off.wrapping_add(1);
 
             let (new_phase1, overflowed) = phase1.overflowing_add(1);
@@ -1131,7 +1132,7 @@ fn render_sample(
     let value0 = SAMPLED_CONSONANT_VALUES_ZERO[kind as usize]; // unsigned char
 
     loop {
-        render_sample_inner(output, sample_page, off, 2, 5, 1, value0);
+        render_sample_inner(output, sample_page, off, 2, 5, 1, value0).await;
 
         off = off.wrapping_add(1);
         if off == 0 {
@@ -1170,7 +1171,11 @@ const SINE_TABLE: [i8; 256] = [
     -54, -51, -48, -45, -42, -39, -36, -33, -30, -27, -24, -21, -18, -15, -12, -9, -6, -3,
 ];
 
-fn process_frames(output: &mut OutputBuffer, speed: u8, prepared_frames: &PreparedFrames) {
+async fn process_frames<F: Future<Output = ()>>(
+    output: &mut OutputWriter<F>,
+    speed: u8,
+    prepared_frames: &PreparedFrames,
+) {
     let mut frame_count = prepared_frames.frame_count;
     let frames = &prepared_frames.frames;
 
@@ -1191,9 +1196,9 @@ fn process_frames(output: &mut OutputBuffer, speed: u8, prepared_frames: &Prepar
 
         // unvoiced sampled phoneme?
         if flags & 248 != 0 {
-            last_sample_offset = time("render_sample #1", || {
+            last_sample_offset =
                 render_sample(output, last_sample_offset, flags, frames[pos & 0xff].pitch)
-            });
+                    .await;
 
             // skip ahead two in the phoneme buffer
             pos += 2;
@@ -1234,7 +1239,7 @@ fn process_frames(output: &mut OutputBuffer, speed: u8, prepared_frames: &Prepar
                 p3 += frames[pos].f3 as u32 * 256 / 4;
             }
 
-            output.ary(0, ary);
+            output.write_sample_array(0, ary).await;
 
             speed_counter -= 1;
 
@@ -1278,7 +1283,8 @@ fn process_frames(output: &mut OutputBuffer, speed: u8, prepared_frames: &Prepar
                     last_sample_offset,
                     flags,
                     frames[pos & 0xFF].pitch,
-                );
+                )
+                .await;
             }
         }
 
@@ -1301,25 +1307,16 @@ fn process_frames(output: &mut OutputBuffer, speed: u8, prepared_frames: &Prepar
     }
 }
 
-pub fn render(
+pub async fn render<R: Future<Output = ()>>(
     phonemes: &[Phoneme],
     pitch: u8,
     mouth: u8,
     throat: u8,
     speed: u8,
     sing_mode: bool,
-) -> Vec<u8> {
+    output_fn: fn(u8) -> R,
+) {
     let prepared_frames = prepare_frames(phonemes, pitch, mouth, throat, sing_mode);
-
-    // Create output buffer
-    let mut output = OutputBuffer::new(
-        (176.4_f32 * // 22050 / 125
-            phonemes.iter().fold(0, |length, phoneme| length + phoneme.length as usize) as f32 * // Combined phoneme length in frames.
-            speed as f32)
-            .ceil() as usize,
-    );
-
-    process_frames(&mut output, speed, &prepared_frames);
-
-    output.get().to_vec()
+    let mut output = OutputWriter::new(output_fn);
+    process_frames(&mut output, speed, &prepared_frames).await;
 }
