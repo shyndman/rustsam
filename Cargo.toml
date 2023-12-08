@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 anyhow = {version = "1.0", default-features = false}
 defmt = "0.3.5"
+futures = {version = "0.3.28", default-features = false}
 hashbrown = "0.14"
-once_cell = {version = "1.17.0", default-features = false, features=["alloc", "critical-section"]}
 micromath = "2.1.0"
+once_cell = {version = "1.17.0", default-features = false, features=["alloc", "critical-section"]}
