@@ -1142,9 +1142,33 @@ fn render_sample(
     last_sample_offset
 }
 
-fn sinus(x: u8) -> i8 {
-    ((2.0 * core::f32::consts::PI * (x as f32 / 256.0)).sin() * 127.0) as i8
+const fn sine_precalc(x: u8) -> i8 {
+    SINE_TABLE[x as usize]
 }
+
+// const TWO_PI: f32 = 2.0 * core::f32::consts::PI;
+//
+// fn sinus(x: u8) -> i8 {
+//     let x_rads = TWO_PI * (x as f32 / 256.0);
+//     (x_rads.sin() * 127.0) as i8
+//   }
+
+const SINE_TABLE: [i8; 256] = [
+    0, 3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36, 39, 42, 45, 48, 51, 54, 57, 59, 62, 65,
+    67, 70, 73, 75, 78, 80, 82, 85, 87, 89, 91, 94, 96, 98, 100, 102, 103, 105, 107, 108,
+    110, 112, 113, 114, 116, 117, 118, 119, 120, 121, 122, 123, 123, 124, 125, 125, 126, 126,
+    126, 126, 126, 127, 126, 126, 126, 126, 126, 125, 125, 124, 123, 123, 122, 121, 120, 119,
+    118, 117, 116, 114, 113, 112, 110, 108, 107, 105, 103, 102, 100, 98, 96, 94, 91, 89, 87,
+    85, 82, 80, 78, 75, 73, 70, 67, 65, 62, 59, 57, 54, 51, 48, 45, 42, 39, 36, 33, 30, 27,
+    24, 21, 18, 15, 12, 9, 6, 3, 0, -3, -6, -9, -12, -15, -18, -21, -24, -27, -30, -33, -36,
+    -39, -42, -45, -48, -51, -54, -57, -59, -62, -65, -67, -70, -73, -75, -78, -80, -82, -85,
+    -87, -89, -91, -94, -96, -98, -100, -102, -103, -105, -107, -108, -110, -112, -113, -114,
+    -116, -117, -118, -119, -120, -121, -122, -123, -123, -124, -125, -125, -126, -126, -126,
+    -126, -126, -127, -126, -126, -126, -126, -126, -125, -125, -124, -123, -123, -122, -121,
+    -120, -119, -118, -117, -116, -114, -113, -112, -110, -108, -107, -105, -103, -102, -100,
+    -98, -96, -94, -91, -89, -87, -85, -82, -80, -78, -75, -73, -70, -67, -65, -62, -59, -57,
+    -54, -51, -48, -45, -42, -39, -36, -33, -30, -27, -24, -21, -18, -15, -12, -9, -6, -3,
+];
 
 fn process_frames(output: &mut OutputBuffer, speed: u8, prepared_frames: &PreparedFrames) {
     let mut frame_count = prepared_frames.frame_count;
@@ -1167,55 +1191,50 @@ fn process_frames(output: &mut OutputBuffer, speed: u8, prepared_frames: &Prepar
 
         // unvoiced sampled phoneme?
         if flags & 248 != 0 {
-            last_sample_offset =
-                render_sample(output, last_sample_offset, flags, frames[pos & 0xff].pitch);
+            last_sample_offset = time("render_sample #1", || {
+                render_sample(output, last_sample_offset, flags, frames[pos & 0xff].pitch)
+            });
 
             // skip ahead two in the phoneme buffer
             pos += 2;
             frame_count -= 2;
             speed_counter = speed;
         } else {
-            {
-                // Rectangle wave consisting of:
-                //   0-128 = 0x90
-                // 128-255 = 0x70
+            // Rectangle wave consisting of:
+            //   0-128 = 0x90
+            // 128-255 = 0x70
 
-                // simulate the glottal pulse and formants
-                let mut ary = [0_u8; 5];
+            // simulate the glottal pulse and formants
+            let mut ary = [0_u8; 5];
 
-                // TODO: Check if u16 is sufficient for these values
-                let mut /* unsigned int */ p1: u32 = phase1 * 256; // Fixed point integers because we need to divide later on
-                let mut /* unsigned int */ p2: u32 = phase2 * 256;
-                let mut /* unsigned int */ p3: u32 = phase3 * 256;
+            // TODO: Check if u16 is sufficient for these values
+            let mut /* unsigned int */ p1: u32 = phase1 * 256; // Fixed point integers because we need to divide later on
+            let mut /* unsigned int */ p2: u32 = phase2 * 256;
+            let mut /* unsigned int */ p3: u32 = phase3 * 256;
 
-                for sample in ary.iter_mut() {
-                    // Sine oscillators
-                    let /* signed char */ sp1 = sinus(((p1 >> 8) & 0xff) as u8);
-                    let /* signed char */ sp2 = sinus(((p2 >> 8) & 0xff) as u8);
+            for sample in ary.iter_mut() {
+                // Sine oscillators
+                let sp1 = sine_precalc(((p1 >> 8) & 0xff) as u8);
+                let sp2 = sine_precalc(((p2 >> 8) & 0xff) as u8);
 
-                    // Square oscillator
-                    let /* signed char */ rp3: i8 = if 0xff & (p3 >> 8) < 129 {
-                        -0x70
-                    } else {
-                        0x70
-                    };
+                // Square oscillator
+                let rp3: i8 = if 0xff & (p3 >> 8) < 129 { -0x70 } else { 0x70 };
 
-                    let /* signed int */ sin1: i32 = sp1 as i32 * (/* (unsigned char) */ frames[pos].a1 & 0x0F) as i32;
-                    let /* signed int */ sin2: i32 = sp2 as i32 * (/* (unsigned char) */ frames[pos].a2 & 0x0F) as i32;
-                    let /* signed int */ rect: i32 = rp3 as i32 * (/* (unsigned char) */ frames[pos].a3 & 0x0F) as i32;
+                let sin1 = sp1 as i32 * (frames[pos].a1 & 0x0F) as i32;
+                let sin2 = sp2 as i32 * (frames[pos].a2 & 0x0F) as i32;
+                let rect = rp3 as i32 * (frames[pos].a3 & 0x0F) as i32;
 
-                    // Sum the oscillators and convert to unsigned 8 bit audio
-                    let mix = (sin1 + sin2 + rect + 4096) / 32;
+                // Sum the oscillators and convert to unsigned 8 bit audio
+                let mix = (sin1 + sin2 + rect + 4096) / 32;
 
-                    *sample = mix as u8;
+                *sample = mix as u8;
 
-                    p1 += frames[pos].f1 as u32 * 256 / 4; // Compromise, this becomes a shift and works well
-                    p2 += frames[pos].f2 as u32 * 256 / 4;
-                    p3 += frames[pos].f3 as u32 * 256 / 4;
-                }
-
-                output.ary(0, ary);
+                p1 += frames[pos].f1 as u32 * 256 / 4; // Compromise, this becomes a shift and works well
+                p2 += frames[pos].f2 as u32 * 256 / 4;
+                p3 += frames[pos].f3 as u32 * 256 / 4;
             }
+
+            output.ary(0, ary);
 
             speed_counter -= 1;
 
