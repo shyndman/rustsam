@@ -1,8 +1,9 @@
 extern crate alloc;
 use alloc::vec::Vec;
+use defmt::debug;
 use core::cmp::Ordering;
 
-use futures::Future;
+use embassy_sync::{blocking_mutex::raw::NoopRawMutex, channel::Sender};
 use micromath as _;
 
 use crate::parser::Phoneme;
@@ -892,17 +893,18 @@ const TIMETABLE: &[[u8; 5]] = &[
 
 const WRITE_SAMPLE_LENGTH: usize = 5;
 
-struct OutputWriter<R: Future<Output = ()>> {
-    output_fn: fn(u8) -> R,
+struct OutputWriter {
+    output_channel: Sender<'static, NoopRawMutex, u8, 1>,
     last_write: [u8; WRITE_SAMPLE_LENGTH],
     position: usize,
     old_timetable_index: usize,
 }
 
-impl<R: Future<Output = ()>> OutputWriter<R> {
-    fn new(output_fn: fn(u8) -> R) -> Self {
+impl OutputWriter {
+    fn new(output_channel: Sender<'static, NoopRawMutex, u8, 1>) -> Self {
+        // futures_util::
         Self {
-            output_fn,
+            output_channel,
             last_write: [0; WRITE_SAMPLE_LENGTH],
             position: 0,
             old_timetable_index: 0,
@@ -917,7 +919,7 @@ impl<R: Future<Output = ()>> OutputWriter<R> {
 
         // Write a little bit in advance
         for sample in array {
-            (self.output_fn)(sample).await;
+            self.output_channel.send(sample).await;
         }
 
         self.last_write = array;
@@ -1058,8 +1060,8 @@ const SAMPLE_TABLE: &[u8] = &[
 
 const SAMPLED_CONSONANT_VALUES_ZERO: &[u8] = &[0x18, 0x1A, 0x17, 0x17, 0x17];
 
-async fn render_sample_inner<F: Future<Output = ()>>(
-    output: &mut OutputWriter<F>,
+async fn render_sample_inner(
+    output: &mut OutputWriter,
     sample_page: u16,
     off: u8,
     index1: u8,
@@ -1086,8 +1088,8 @@ async fn render_sample_inner<F: Future<Output = ()>>(
     }
 }
 
-async fn render_sample<F: Future<Output = ()>>(
-    output: &mut OutputWriter<F>,
+async fn render_sample(
+    output: &mut OutputWriter,
     last_sample_offset: usize,
     consonant_flag: u8,
     pitch: u8,
@@ -1171,8 +1173,8 @@ const SINE_TABLE: [i8; 256] = [
     -54, -51, -48, -45, -42, -39, -36, -33, -30, -27, -24, -21, -18, -15, -12, -9, -6, -3,
 ];
 
-async fn process_frames<F: Future<Output = ()>>(
-    output: &mut OutputWriter<F>,
+async fn process_frames(
+    output: &mut OutputWriter,
     speed: u8,
     prepared_frames: &PreparedFrames,
 ) {
@@ -1307,16 +1309,18 @@ async fn process_frames<F: Future<Output = ()>>(
     }
 }
 
-pub async fn render<R: Future<Output = ()>>(
+pub async fn render(
     phonemes: &[Phoneme],
     pitch: u8,
     mouth: u8,
     throat: u8,
     speed: u8,
     sing_mode: bool,
-    output_fn: fn(u8) -> R,
+    output_channel: Sender<'static, NoopRawMutex, u8, 1>,
 ) {
+    debug!("Preparing frames");
     let prepared_frames = prepare_frames(phonemes, pitch, mouth, throat, sing_mode);
-    let mut output = OutputWriter::new(output_fn);
+    let mut output = OutputWriter::new(output_channel);
+    debug!("Processing frames");
     process_frames(&mut output, speed, &prepared_frames).await;
 }
