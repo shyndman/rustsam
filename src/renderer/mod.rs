@@ -1,8 +1,8 @@
 extern crate alloc;
 use alloc::vec::Vec;
-use defmt::debug;
 use core::cmp::Ordering;
 
+use defmt::debug;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, channel::Sender};
 use micromath as _;
 
@@ -928,7 +928,7 @@ impl OutputWriter {
     async fn write_sample(&mut self, index: usize, sample: u8) {
         // Scale by 16 and write 5 times
         // Note: renderer passes in values that are > 16, these are overflowing
-        self.write_sample_array(index, [(sample & 15) * 16; WRITE_SAMPLE_LENGTH])
+        self.write_sample_array(index, [sample & 15; WRITE_SAMPLE_LENGTH])
             .await;
     }
 }
