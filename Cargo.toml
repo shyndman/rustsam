@@ -6,8 +6,8 @@ edition = "2021"
 [dependencies]
 anyhow = { version = "1.0", default-features = false }
 defmt = "0.3.5"
-embassy-sync = { package = "embassy-sync", features = ["defmt"], git = "https://github.com/shyndman/embassy", rev = "76f3a11" }
-embassy-time = { package = "embassy-time", features = ["nightly", "unstable-traits", "defmt", "defmt-timestamp-uptime"], git = "https://github.com/shyndman/embassy", rev = "76f3a11" }
+embassy-sync = {package = "embassy-sync", features = ["defmt"], git = "https://github.com/shyndman/embassy", rev = "9cd0beaee"}
+embassy-time = {package = "embassy-time", features = [  "defmt", "defmt-timestamp-uptime"], git = "https://github.com/shyndman/embassy", rev = "9cd0beaee"}
 futures = { version = "0.3.28", default-features = false }
 hashbrown = "0.14"
 micromath = "2.1.0"
